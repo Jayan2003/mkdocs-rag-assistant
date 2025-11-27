@@ -1,9 +1,9 @@
 
 # 📘 MkDocs RAG Assistant
 
-A **Retrieval-Augmented Generation (RAG)** system designed to answer questions from the official **MkDocs documentation**, using semantic search + LLMs.
+A **Retrieval-Augmented Generation (RAG)** system that answers questions from the official **MkDocs documentation** using semantic search + LLMs.
 
-This project automatically ingests MkDocs docs, chunks them, embeds text + images, stores embeddings in ChromaDB, and serves a Streamlit UI to answer questions with accurate grounded context.
+The system ingests MkDocs docs, splits them into semantic chunks, embeds **text + images**, stores everything inside ChromaDB, and uses a Streamlit UI for interactive querying.
 
 ---
 
@@ -11,34 +11,33 @@ This project automatically ingests MkDocs docs, chunks them, embeds text + image
 
 ### 🔹 Data Source
 
-Official MkDocs Repository
-→ `docs/` folder from
-[https://github.com/mkdocs/mkdocs/tree/master](https://github.com/mkdocs/mkdocs/tree/master)
+Official MkDocs Documentation
+→ Extracted from the `docs/` folder of:
+👉 [https://github.com/mkdocs/mkdocs/tree/master](https://github.com/mkdocs/mkdocs/tree/master)
 
 ### 🔹 Key Features
 
-✔ Processes MkDocs documentation
-✔ Semantic chunking by headings
-✔ Cleans and normalizes content
-✔ Embeds text + images
-✔ Chroma vector database
-✔ Gemini LLM answer generation
-✔ Streamlit user interface
-✔ Retrieved context is shown
+✔ Processes entire MkDocs repo
+✔ Heading-aware semantic chunking
+✔ Cleans & normalizes content
+✔ Embeds both **text + images (CLIP)**
+✔ Stores vectors in ChromaDB
+✔ Retrieval + Gemini LLM answering
+✔ Streamlit UI with visible retrieved context
 
 ---
 
 # 🧠 Architecture
 
-| Component                 | Purpose                                                          |
-| ------------------------- | ---------------------------------------------------------------- |
-| `ingest/ingest_mkdocs.py` | Reads MD files, chunks, cleans text, embeds, inserts into Chroma |
-| ChromaDB                  | Vector store                                                     |
-| MiniLM Embedding          | Text vectorization                                               |
-| CLIP Embedding            | Image vectorization                                              |
-| Gemini LLM                | Answer generation                                                |
-| Streamlit                 | UI Layer                                                         |
-| Retrieval k=4             | empirically optimal                                              |
+| Component                 | Purpose                                      |
+| ------------------------- | -------------------------------------------- |
+| `ingest/ingest_mkdocs.py` | Chunk + clean + embed + insert into ChromaDB |
+| **ChromaDB**              | Vector database (persistent)                 |
+| **MiniLM Text Embedding** | Fast & accurate for semantic search          |
+| **CLIP Image Embedding**  | Embeds screenshots / diagrams                |
+| **Gemini LLM**            | Final grounded answer generation             |
+| **Streamlit UI**          | User interface                               |
+| Retrieval `k=4`           | Empirically optimal after testing            |
 
 ---
 
@@ -46,58 +45,66 @@ Official MkDocs Repository
 
 ### **Method**
 
-* **Heading-based splitting**
-* Then **recursive sliding window** for long text
-  (`1000 char max + 200 overlap`)
+* Split by **Markdown headings** (H1–H6)
+* For long sections:
+  🔁 **Sliding window**
+  → 1000 characters max
+  → 200 characters overlap
 
-### **Why this method?**
+### **Why?**
 
-MkDocs documentation is highly structured →
-headings reliably group semantic topics.
+MkDocs documentation is extremely heading-structured.
+This method:
 
-The overlap prevents context loss.
+* preserves semantic grouping
+* respects sections
+* avoids cross-topic contamination
+* overlap prevents missing context
 
 ---
 
 # 🧼 Cleaning Method
 
-Applied to every chunk:
+Each chunk undergoes:
 
-✔ strip markdown headings
-✔ collapse whitespace
-✔ strip leading/trailing whitespace
+✔ Remove Markdown `#` headings
+✔ Collapse whitespace
+✔ Strip leading/trailing spaces
 
-Result → higher quality embeddings
+Result → cleaner embeddings → better retrieval.
 
 ---
 
 # 🧬 Embedding Models
 
-### Text Embeddings
+### **Text Model**
 
 `sentence-transformers/all-MiniLM-L6-v2`
 
-Reason:
+Reasons:
 
 * Very fast
 * Lightweight
-* Very good semantic alignment
-* SOTA for documentation QA
+* Excellent semantic performance
+* Ideal for documentation Q&A
 
-### **Bonus**
+### **Image Model (BONUS)**
 
-#### Multi-modal images included!
-
-Images embedded using:
 `OpenAI CLIP ViT-B/32`
 
-→ stored inside same Chroma collection
+Used to embed:
+
+* diagrams
+* screenshots
+* icons
+
+→ Stored in the same ChromaDB collection.
 
 ---
 
-# 📦 Vector DB
+# 📦 Vector Database
 
-### **ChromaDB persistent client**
+### **ChromaDB (Persistent Client)**
 
 Stored on disk:
 
@@ -113,85 +120,96 @@ mkdocs_user_guide
 
 ---
 
-# 🔍 Retrieval — Choosing K
+# 🔍 Retrieval — Choosing the Best K
 
-I tested:
+### I tested **five** different values:
 
-* **k=2**
-* **k=4**
-* **k=6**
-* **k=8**
+* **k = 2**
+* **k = 4**
+* **k = 5**
+* **k = 6**
+* **k = 8**
 
-Based on 3 queries:
+### Test Questions
 
-1. How to deploy MkDocs on GitHub Pages?
-2. How do I change the theme?
-3. How do I add a new page?
+1. **How do I deploy MkDocs on GitHub Pages?**
+2. **How do I change the theme in MkDocs?**
+3. **How do I add a new page?**
 
-### Findings
+### 🔎 Results Summary
 
-| k | Quality                               |
-| - | ------------------------------------- |
-| 2 | often missing needed content          |
-| 4 | **best balance** accuracy + relevance |
-| 6 | occasional noise                      |
-| 8 | worse + slow                          |
+| k     | Quality                                       |
+| ----- | --------------------------------------------- |
+| **2** | Too little context → misses details           |
+| **4** | ✅ **Best accuracy vs noise balance**          |
+| **5** | More noise introduced, some answers got worse |
+| **6** | High noise, reduced relevance                 |
+| **8** | Too noisy & slower                            |
 
-### **Chosen value:**
+### 📌 Final Choice
 
 ```
 K = 4
 ```
+# 📸 Screenshots of Results (K = 4)
 
-Saved in `rag_answer.py`
+### **Q1 – How do I deploy MkDocs on GitHub Pages?**
+
+![K4 Output 1](https://github.com/user-attachments/assets/5790ac1a-094d-42d5-8020-4910c36cc3d8)
+![K4 Output 2](https://github.com/user-attachments/assets/bcd54b65-f0cd-4bb7-a309-9d6486d26bc9)
+
+
+### **Q2 — How do I change the theme in MkDocs?**
+
+![K4 Output 2](https://github.com/user-attachments/assets/cb21b6fc-5d71-48e2-9705-6efa870e1b5c)
+
+
+### **Q3 — How do I add a new page in MkDocs?**
+
+![K4 Output 3](https://github.com/user-attachments/assets/aa1a0efc-6c75-42bc-9c18-937ab3f56de0)
+
 
 ---
 
 # 🧪 Sample Responses
 
-### Q1
+### **Q1 — Deployment**
 
-**How do I deploy MkDocs on GitHub Pages?**
-
-Retrieved context contained:
-`deploying-your-docs.md`
-
-Answer correct
+Retrieved context:
+`user-guide/deploying-your-docs.md`
+→ Correct answer generated.
 
 ---
 
-### Q2
+### **Q2 — Changing Theme**
 
-**How do I change the theme in MkDocs?**
-
-Retrieved context contained:
+Retrieved context:
 `choosing-your-theme.md`
 `configuration.md`
-
-Answer correct
-
----
-
-### Q3
-
-**How do I add a new page?**
-
-Retrieved context contained:
-`navigation.md`
-
-Answer correct
+→ Correct answer.
 
 ---
 
-# 🖥 Run locally
+### **Q3 — Adding a Page**
 
-### 1) Create venv
+**Retrieved Context:**
+
+* `data/mkdocs/docs/about/release-notes.md`
+* `data/mkdocs/docs/dev-guide/README.md`
+* `data/mkdocs/docs/getting-started.md`
+* `data/mkdocs/docs/user-guide/README.md`
+
+---
+
+# 🖥 Run Locally
+
+### 1️⃣ Create environment
 
 ```
 python -m venv venv
 ```
 
-### 2) Activate
+### 2️⃣ Activate
 
 Windows:
 
@@ -199,21 +217,19 @@ Windows:
 venv\Scripts\activate
 ```
 
-### 3) Install requirements
+### 3️⃣ Install requirements
 
 ```
 pip install -r requirements.txt
 ```
 
-### 4) Run ingestion
+### 4️⃣ Ingest the docs
 
 ```
 python ingest/ingest_mkdocs.py
 ```
 
-(wait until 100%)
-
-### 5) Launch UI
+### 5️⃣ Launch UI
 
 ```
 streamlit run app/app_ui.py
@@ -221,16 +237,17 @@ streamlit run app/app_ui.py
 
 ---
 
-# 🚀 Usage Demo
+# 🚀 Usage
 
-Ask something like:
+Example question:
 
-> How do I deploy MkDocs to GitHub Pages?
+> **How do I deploy MkDocs to GitHub Pages?**
 
 You will see:
 
 ✔ Answer
-✔ Retrieved chunks (files + text)
+✔ Retrieved chunks with filenames
+✔ Context used to generate the answer
 
 ---
 
@@ -247,38 +264,40 @@ ingest/
    ingest_mkdocs.py
 
 data/
-    mkdocs/   ← official docs
+   mkdocs/          ← official docs
 
-chroma_db/   ← generated automatically
+chroma_db/         ← auto-generated
+
+README.md
+requirements.txt
 ```
 
 ---
 
-# 🏆 Bonus Features Completed
+# 🏆 Bonus Features Implemented
 
 ✔ Multimodal embeddings (text + images)
-✔ Fully running Streamlit UI
+✔ Complete Streamlit RAG application
 
 ---
 
-# 📎 Requirements Satisfied
+# 📎 Requirements Checklist
 
-☑ Chunking method & justification
+☑ Chunking method + justification
 ☑ Cleaning method
-☑ Embedding model
-☑ Vector DB
-☑ Sample questions + context
-☑ K selection testing
-☑ Streamlit app
-☑ Multimodal support
-☑ Full repo
+☑ Embedding models
+☑ Vector DB choice
+☑ Sample Q&A
+☑ K-selection comparison (2,4,5,6,8)
+☑ Final chosen K with explanation
+☑ Streamlit UI
+☑ Multimodal support (CLIP)
+☑ Repo submission
 
 ---
 
 # 📬 Contact
 
 Maintainer: **Jayan Ahmed Samer**
-
----
 
 
